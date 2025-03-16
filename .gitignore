@@ -1,0 +1,14 @@
+# Go
+/bin/
+/pkg/
+*.exe
+*.test
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# IDE
+.vscode/
+.idea/
+*.log
