@@ -1,0 +1,1 @@
+ALTER TABLE students ADD COLUMN teacher_id INT REFERENCES teachers(id) ON DELETE SET NULL;
