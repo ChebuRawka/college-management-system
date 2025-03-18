@@ -3,17 +3,49 @@ package services
 import (
     "backend/models"
     "backend/repository"
+    "fmt"
+    "errors"
 )
 
 type ScheduleService struct {
     Repo *repositories.ScheduleRepository
+    TeacherRepo *repositories.TeacherRepository
 }
 
-func NewScheduleService(repo *repositories.ScheduleRepository) *ScheduleService {
-    return &ScheduleService{Repo: repo}
+func NewScheduleService(
+    scheduleRepo *repositories.ScheduleRepository,
+    teacherRepo *repositories.TeacherRepository, // Добавляем параметр для TeacherRepository
+) *ScheduleService {
+    return &ScheduleService{
+        Repo:       scheduleRepo,
+        TeacherRepo: teacherRepo,
+    }
 }
 
 func (s *ScheduleService) CreateSchedule(teacherID, classroomID int, schedule *models.Schedule) error {
+    // Проверяем пересечение времени
+    conflict, err := s.Repo.CheckScheduleConflict(teacherID, schedule.DayOfWeek, schedule.StartTime, schedule.EndTime)
+    if err != nil {
+        return err
+    }
+    if conflict {
+        return errors.New("teacher already has a class at this time")
+    }
+
+    // Получаем продолжительность занятия в часах
+    duration := schedule.EndTime.Sub(schedule.StartTime).Hours()
+    fmt.Printf("Duration of the lesson: %.2f hours\n", duration)
+
+    // Проверяем и списываем рабочие часы у преподавателя
+    err = s.TeacherRepo.UpdateTeacherWorkingHours(teacherID, duration)
+    if err != nil {
+        fmt.Println("Error updating teacher working hours:", err)
+        return err
+    }
+
+    fmt.Println("Teacher working hours updated successfully")
+
+    // Создаем запись в расписании
     return s.Repo.CreateSchedule(teacherID, classroomID, schedule)
 }
 

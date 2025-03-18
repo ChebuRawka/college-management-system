@@ -6,6 +6,7 @@ import (
     "errors"
 	"fmt"
 	"strings"
+    "time"
 )
 
 type ScheduleRepository struct {
@@ -42,6 +43,26 @@ func (r *ScheduleRepository) CreateSchedule(teacherID, classroomID int, schedule
     }
 
     return nil
+}
+
+func (r *ScheduleRepository) CheckScheduleConflict(teacherID int, dayOfWeek string, startTime, endTime time.Time) (bool, error) {
+    query := `
+        SELECT EXISTS (
+            SELECT 1
+            FROM schedules
+            WHERE teacher_id = $1
+              AND day_of_week = $2
+              AND (
+                  ($3 < end_time AND $4 > start_time)
+              )
+        )
+    `
+    var exists bool
+    err := r.DB.QueryRow(query, teacherID, dayOfWeek, startTime, endTime).Scan(&exists)
+    if err != nil {
+        return false, err
+    }
+    return exists, nil
 }
 
 func (r *ScheduleRepository) GetSchedules() ([]models.Schedule, error) {

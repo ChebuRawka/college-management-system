@@ -25,7 +25,8 @@ func main() {
     studentService := services.NewStudentService(studentRepo)
     courseService := services.NewCourseService(courseRepo)
     classroomService := services.NewClassroomService(classroomRepo)
-    scheduleService := services.NewScheduleService(scheduleRepo)
+    scheduleService := services.NewScheduleService(scheduleRepo, teacherRepo) // Передаем teacherRepo
+
 
 
     // Инициализация обработчика

@@ -23,31 +23,34 @@ func NewTeacherHandler(service *services.TeacherService) *TeacherHandler {
 func (h *TeacherHandler) CreateTeacher(c *gin.Context) {
     var teacher models.Teacher
     if err := c.ShouldBindJSON(&teacher); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+        return
+    }
+
+    fmt.Printf("Received teacher data: %+v\n", teacher)
+
+    // Пытаемся создать преподавателя
+    if err := h.Service.CreateTeacher(&teacher); err != nil {
+        if err.Error() == "teacher with this name and subject already exists" {
+            c.JSON(http.StatusConflict, gin.H{"error": "Teacher with this name and subject already exists"})
+            return
+        }
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
 
-    if err := models.Validate.Struct(teacher); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-        return
-    }
-
-    createdTeacher, err := h.Service.CreateTeacher(teacher)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
-
-    c.JSON(http.StatusCreated, createdTeacher)
+    c.JSON(http.StatusCreated, teacher)
 }
 
 // Получение всех преподавателей
 func (h *TeacherHandler) GetAllTeachers(c *gin.Context) {
-    teachers, err := h.Service.GetAllTeachersWithCourses()
+    teachers, err := h.Service.GetAllTeachers()
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
+
+    fmt.Printf("Returning teachers: %+v\n", teachers)
 
     c.JSON(http.StatusOK, teachers)
 }

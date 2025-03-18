@@ -1,0 +1,1 @@
+ALTER TABLE teachers ADD COLUMN working_hours FLOAT NOT NULL DEFAULT 0;

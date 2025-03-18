@@ -1,11 +1,13 @@
 package repositories
 
 import (
-    "backend/models"
-    "database/sql"
+	"backend/models"
+	"database/sql"
+	"errors"
+	"fmt"
 	"strings"
-    "fmt"
-    "errors"
+
+	"github.com/lib/pq"
 )
 
 type TeacherRepository struct {
@@ -21,14 +23,63 @@ func NewTeacherRepository(db *sql.DB) *TeacherRepository {
 }
 
 // Создание преподавателя
-func (r *TeacherRepository) CreateTeacher(teacher models.Teacher) (int, error) {
-    query := `INSERT INTO teachers (name, subject) VALUES ($1, $2) RETURNING id`
-    var id int
-    err := r.DB.QueryRow(query, teacher.Name, teacher.Subject).Scan(&id)
+func (r *TeacherRepository) CreateTeacher(teacher *models.Teacher) error {
+    query := `
+        INSERT INTO teachers (name, subject, courses, working_hours)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
+    `
+    return r.DB.QueryRow(query, teacher.Name, teacher.Subject, pq.Array(teacher.Courses), teacher.WorkingHours).Scan(&teacher.ID)
+}
+
+// UpdateTeacherWorkingHours обновляет количество рабочих часов преподавателя
+func (r *TeacherRepository) UpdateTeacherWorkingHours(teacherID int, hours float64) error {
+    query := `
+        UPDATE teachers
+        SET working_hours = working_hours - $1
+        WHERE id = $2 AND working_hours >= $1
+    `
+    result, err := r.DB.Exec(query, hours, teacherID)
     if err != nil {
-        return 0, err
+        return err
     }
-    return id, nil
+
+    rowsAffected, _ := result.RowsAffected()
+    if rowsAffected == 0 {
+        return errors.New("not enough working hours for the teacher")
+    }
+    return nil
+}
+
+func (r *TeacherRepository) CheckTeacherExists(name, subject string) (bool, error) {
+    query := `
+        SELECT EXISTS (
+            SELECT 1
+            FROM teachers
+            WHERE name = $1 AND subject = $2
+        )
+    `
+    var exists bool
+    err := r.DB.QueryRow(query, name, subject).Scan(&exists)
+    if err != nil {
+        return false, err
+    }
+    return exists, nil
+}
+
+func (r *TeacherRepository) CheckCoursesExist(courseNames []string) (bool, error) {
+    query := `
+        SELECT COUNT(*)
+        FROM courses
+        WHERE name = ANY($1)
+    `
+    var count int
+    err := r.DB.QueryRow(query, pq.Array(courseNames)).Scan(&count)
+    if err != nil {
+        return false, err
+    }
+
+    return count == len(courseNames), nil
 }
 
 func (r *TeacherRepository) GetAllTeachersWithCourses() ([]models.Teacher, error) {
@@ -78,7 +129,10 @@ func (r *TeacherRepository) GetAllTeachersWithCourses() ([]models.Teacher, error
 }
 // Получение всех преподавателей
 func (r *TeacherRepository) GetAllTeachers() ([]models.Teacher, error) {
-    query := `SELECT id, name, subject FROM teachers`
+    query := `
+        SELECT id, name, subject, courses, working_hours
+        FROM teachers
+    `
     rows, err := r.DB.Query(query)
     if err != nil {
         return nil, err
@@ -88,12 +142,14 @@ func (r *TeacherRepository) GetAllTeachers() ([]models.Teacher, error) {
     var teachers []models.Teacher
     for rows.Next() {
         var teacher models.Teacher
-        err := rows.Scan(&teacher.ID, &teacher.Name, &teacher.Subject)
-        if err != nil {
+        var courses []string
+        if err := rows.Scan(&teacher.ID, &teacher.Name, &teacher.Subject, pq.Array(&courses), &teacher.WorkingHours); err != nil {
             return nil, err
         }
+        teacher.Courses = courses
         teachers = append(teachers, teacher)
     }
+
     return teachers, nil
 }
 

@@ -3,6 +3,7 @@ package services
 import (
     "backend/models"
     "backend/repository"
+    "errors"
 )
 
 type TeacherService struct {
@@ -14,13 +15,34 @@ func NewTeacherService(repo *repositories.TeacherRepository) *TeacherService {
 }
 
 // Создание преподавателя
-func (s *TeacherService) CreateTeacher(teacher models.Teacher) (models.Teacher, error) {
-    id, err := s.Repo.CreateTeacher(teacher)
-    if err != nil {
-        return models.Teacher{}, err
+func (s *TeacherService) CreateTeacher(teacher *models.Teacher) error {
+    // Проверяем валидацию модели
+    if err := models.Validate.Struct(teacher); err != nil {
+        return err
     }
-    teacher.ID = id
-    return teacher, nil
+
+    // Проверяем, существует ли уже преподаватель с таким именем и предметом
+    exists, err := s.Repo.CheckTeacherExists(teacher.Name, teacher.Subject)
+    if err != nil {
+        return err
+    }
+    if exists {
+        return errors.New("teacher with this name and subject already exists")
+    }
+
+    // Проверяем, что все указанные курсы существуют
+    if len(teacher.Courses) > 0 {
+        validCourses, err := s.Repo.CheckCoursesExist(teacher.Courses)
+        if err != nil {
+            return err
+        }
+        if !validCourses {
+            return errors.New("some courses do not exist")
+        }
+    }
+
+    // Создаем нового преподавателя
+    return s.Repo.CreateTeacher(teacher)
 }
 
 // Получение всех преподавателей
