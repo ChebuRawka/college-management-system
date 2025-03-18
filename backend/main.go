@@ -5,6 +5,7 @@ import (
     "backend/handlers"
     "backend/repository"
     "backend/services"
+    "backend/middleware"
     "github.com/gin-gonic/gin"
 )
 
@@ -19,6 +20,7 @@ func main() {
     courseRepo := repositories.NewCourseRepository(db)
     classroomRepo := repositories.NewClassroomRepository(db)
     scheduleRepo := repositories.NewScheduleRepository(db)
+    userRepo := repositories.NewUserRepository(db) // Добавляем репозиторий для пользователей
 
     // Инициализация сервиса
     teacherService := services.NewTeacherService(teacherRepo)
@@ -26,8 +28,7 @@ func main() {
     courseService := services.NewCourseService(courseRepo)
     classroomService := services.NewClassroomService(classroomRepo)
     scheduleService := services.NewScheduleService(scheduleRepo, teacherRepo) // Передаем teacherRepo
-
-
+    authService := services.NewAuthService(userRepo, "your_secret_key")       // Добавляем сервис для авторизации
 
     // Инициализация обработчика
     teacherHandler := handlers.NewTeacherHandler(teacherService)
@@ -35,45 +36,68 @@ func main() {
     courseHandler := handlers.NewCourseHandler(courseService)
     classroomHandler := handlers.NewClassroomHandler(classroomService)
     scheduleHandler := handlers.NewScheduleHandler(scheduleService)
-
+    authHandler := handlers.NewAuthHandler(authService) // Добавляем обработчик для авторизации
 
     // Роутер
     r := gin.Default()
 
     api := r.Group("/api")
 
-    // Маршруты
-    api.GET("/teachers", teacherHandler.GetAllTeachers)
-    api.POST("/teachers", teacherHandler.CreateTeacher)
-    api.PATCH("/teachers/:id", teacherHandler.UpdateTeacherPartial)
-    api.DELETE("/teachers/:id", teacherHandler.DeleteTeacher)
-    api.GET("/teachers/:teacher_name/schedule", teacherHandler.GetTeacherSchedule)
+    // Маршруты для авторизации
+    api.POST("/register", authHandler.Register) // Регистрация нового пользователя
+    api.POST("/login", authHandler.Login)       // Авторизация пользователя
 
-    api.GET("/students", studentHandler.GetStudents)
-    api.POST("/students", studentHandler.CreateStudent)
-    api.GET("/students/:id", studentHandler.GetStudentByID)
-    api.PATCH("/students/:id", studentHandler.UpdateStudent)
-    api.DELETE("/students/:id", studentHandler.DeleteStudent)
+    // Защищенные маршруты
+    authorized := api.Group("/")
+    authorized.Use(middleware.AuthMiddleware("your_secret_key")) // Middleware для проверки JWT-токена
+    {
+        // Только администраторы
+        admin := authorized.Group("/")
+        admin.Use(middleware.RoleMiddleware("admin"))
+        {
+            admin.GET("/admin", func(c *gin.Context) {
+                c.JSON(200, gin.H{"message": "welcome, admin!"})
+            })
 
-    api.GET("/courses", courseHandler.GetCourses)
-    api.POST("/courses", courseHandler.CreateCourse)
-    api.GET("/courses/:id", courseHandler.GetCourseByID)
-    api.PATCH("/courses/:id", courseHandler.UpdateCourse)
-    api.DELETE("/courses/:id", courseHandler.DeleteCourse)
+            // Маршруты только для администраторов
+            admin.GET("/teachers", teacherHandler.GetAllTeachers)
+            admin.POST("/teachers", teacherHandler.CreateTeacher)
+            admin.PATCH("/teachers/:id", teacherHandler.UpdateTeacherPartial)
+            admin.DELETE("/teachers/:id", teacherHandler.DeleteTeacher)
 
-    api.POST("/classrooms", classroomHandler.CreateClassroom)
-    api.GET("/classrooms", classroomHandler.GetClassrooms)
-    api.GET("/classrooms/:id", classroomHandler.GetClassroomByID)
-    api.PATCH("/classrooms/:id", classroomHandler.UpdateClassroom)
-    api.DELETE("/classrooms/:id", classroomHandler.DeleteClassroom)
+            admin.GET("/students", studentHandler.GetStudents)
+            admin.POST("/students", studentHandler.CreateStudent)
+            admin.GET("/students/:id", studentHandler.GetStudentByID)
+            admin.PATCH("/students/:id", studentHandler.UpdateStudent)
+            admin.DELETE("/students/:id", studentHandler.DeleteStudent)
 
-    api.POST("/schedules", scheduleHandler.CreateSchedule)
-    api.GET("/schedules", scheduleHandler.GetSchedules)
-    api.GET("/schedules/:id", scheduleHandler.GetScheduleByID)
-    api.PATCH("/schedules/:id", scheduleHandler.UpdateSchedule)
-    api.DELETE("/schedules/:id", scheduleHandler.DeleteSchedule)
-    api.GET("/schedules/day/:day", scheduleHandler.GetSchedulesByDay)        // По дню недели
-    api.GET("/schedules/group/:group", scheduleHandler.GetSchedulesByGroup) // По группе
-        
+            admin.GET("/courses", courseHandler.GetCourses)
+            admin.POST("/courses", courseHandler.CreateCourse)
+            admin.GET("/courses/:id", courseHandler.GetCourseByID)
+            admin.PATCH("/courses/:id", courseHandler.UpdateCourse)
+            admin.DELETE("/courses/:id", courseHandler.DeleteCourse)
+
+            admin.POST("/classrooms", classroomHandler.CreateClassroom)
+            admin.GET("/classrooms", classroomHandler.GetClassrooms)
+            admin.GET("/classrooms/:id", classroomHandler.GetClassroomByID)
+            admin.PATCH("/classrooms/:id", classroomHandler.UpdateClassroom)
+            admin.DELETE("/classrooms/:id", classroomHandler.DeleteClassroom)
+
+            admin.POST("/schedules", scheduleHandler.CreateSchedule)
+            admin.GET("/schedules", scheduleHandler.GetSchedules)
+            admin.GET("/schedules/:id", scheduleHandler.GetScheduleByID)
+            admin.PATCH("/schedules/:id", scheduleHandler.UpdateSchedule)
+            admin.DELETE("/schedules/:id", scheduleHandler.DeleteSchedule)
+        }
+
+        // Учителя и администраторы
+    teacher := authorized.Group("/")
+    teacher.Use(middleware.RoleMiddleware("teacher", "admin"))
+    {
+        // Маршрут для просмотра расписания учителя
+        teacher.GET("/teachers/:teacher_name/schedule", teacherHandler.GetTeacherSchedule)
+    }
+    }
+
     r.Run(":8080")
 }
