@@ -196,11 +196,12 @@ func (r *TeacherRepository) GetTeacherByID(teacherID int) (*models.Teacher, erro
     teacher.Courses = courses
     return &teacher, nil
 }
-func (r *TeacherRepository) UpdateTeacherPartial(id int, updates map[string]interface{}) error {
+func (r *TeacherRepository) UpdateTeacherPartial(id int, updates map[string]interface{}) (map[string]interface{}, error) {
     setClauses := []string{}
     args := []interface{}{}
     paramIndex := 1
 
+    // Подготавливаем запрос и аргументы
     for key, value := range updates {
         switch key {
         case "name":
@@ -214,41 +215,72 @@ func (r *TeacherRepository) UpdateTeacherPartial(id int, updates map[string]inte
         case "working_hours":
             workingHours, ok := value.(float64) // JSON передает числа как float64
             if !ok {
-                return fmt.Errorf("invalid type for working_hours: expected number")
+                return nil, fmt.Errorf("invalid type for working_hours: expected number")
             }
             if workingHours < 0 {
-                return fmt.Errorf("working_hours cannot be negative")
+                return nil, fmt.Errorf("working_hours cannot be negative")
             }
             setClauses = append(setClauses, fmt.Sprintf("working_hours = $%d", paramIndex))
             args = append(args, workingHours)
             paramIndex++
         default:
-            return fmt.Errorf("invalid field: %s", key)
+            return nil, fmt.Errorf("invalid field: %s", key)
         }
     }
 
     if len(setClauses) == 0 {
-        return fmt.Errorf("no fields to update")
+        return nil, fmt.Errorf("no fields to update")
     }
 
     query := fmt.Sprintf(`
         UPDATE teachers
         SET %s
         WHERE id = $%d
+        RETURNING id, name, subject, working_hours
     `, strings.Join(setClauses, ", "), paramIndex)
     args = append(args, id)
 
-    result, err := r.DB.Exec(query, args...)
+    // Промежуточные переменные для Scan
+    var teacherID int
+    var name sql.NullString       // Используем sql.NullString для обработки NULL
+    var subject sql.NullString    // Используем sql.NullString для обработки NULL
+    var workingHours sql.NullFloat64 // Используем sql.NullFloat64 для обработки NULL
+
+    err := r.DB.QueryRow(query, args...).Scan(
+        &teacherID,
+        &name,
+        &subject,
+        &workingHours,
+    )
     if err != nil {
-        return fmt.Errorf("failed to update teacher data: %v", err)
+        if errors.Is(err, sql.ErrNoRows) {
+            return nil, fmt.Errorf("teacher with id %d not found", id)
+        }
+        return nil, fmt.Errorf("failed to update teacher data: %v", err)
     }
 
-    rowsAffected, _ := result.RowsAffected()
-    if rowsAffected == 0 {
-        return fmt.Errorf("teacher with id %d not found", id)
+    // Формируем словарь с обновленными данными
+    updatedData := make(map[string]interface{})
+    if name.Valid {
+        updatedData["name"] = name.String
+    }
+    if subject.Valid {
+        updatedData["subject"] = subject.String
+    }
+    if workingHours.Valid {
+        updatedData["working_hours"] = workingHours.Float64
     }
 
-    return nil
+    // Удаляем из updatedData поля, которые не были обновлены
+    for key := range updatedData {
+        if _, exists := updates[key]; !exists {
+            delete(updatedData, key)
+        }
+    }
+
+    // Добавляем ID в ответ
+    updatedData["id"] = teacherID
+    return updatedData, nil
 }
 
 func (r *TeacherRepository) TeacherExists(id int) (bool, error) {

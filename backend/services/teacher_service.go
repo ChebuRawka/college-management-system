@@ -59,15 +59,15 @@ func (s *TeacherService) GetTeacherByID(id int) (*models.Teacher, error) {
     return s.Repo.GetTeacherByID(id)
 }
 
-func (s *TeacherService) UpdateTeacherPartial(teacherID int, updates map[string]interface{}) error {
-    err := s.Repo.UpdateTeacherPartial(teacherID, updates)
+func (s *TeacherService) UpdateTeacherPartial(teacherID int, updates map[string]interface{}) (map[string]interface{}, error) {
+    updatedData, err := s.Repo.UpdateTeacherPartial(teacherID, updates)
     if err != nil {
         if strings.Contains(err.Error(), "not found") {
-            return fmt.Errorf("teacher with idiot %d not found", teacherID)
+            return nil, fmt.Errorf("teacher with id %d not found", teacherID)
         }
-        return fmt.Errorf("failed to update teacher: %v", err)
+        return nil, fmt.Errorf("failed to update teacher: %v", err)
     }
-    return nil
+    return updatedData, nil
 }
 
 // Удаление преподавателя

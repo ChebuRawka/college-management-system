@@ -106,7 +106,7 @@ func (h *TeacherHandler) UpdateTeacherPartial(c *gin.Context) {
     }
 
     // Вызываем метод сервиса для обновления данных
-    err = h.Service.UpdateTeacherPartial(id, updates)
+    updatedData, err := h.Service.UpdateTeacherPartial(id, updates)
     if err != nil {
         if strings.Contains(err.Error(), "not found") {
             c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -116,7 +116,7 @@ func (h *TeacherHandler) UpdateTeacherPartial(c *gin.Context) {
         return
     }
 
-    c.JSON(http.StatusOK, gin.H{"message": "Teacher updated successfully"})
+    c.JSON(http.StatusOK, updatedData)
 }
 // Удаление преподавателя
 func (h *TeacherHandler) DeleteTeacher(c *gin.Context) {
