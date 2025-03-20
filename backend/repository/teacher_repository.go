@@ -24,12 +24,27 @@ func NewTeacherRepository(db *sql.DB) *TeacherRepository {
 
 // Создание преподавателя
 func (r *TeacherRepository) CreateTeacher(teacher *models.Teacher) error {
+    // Проверяем, что все указанные курсы существуют
+    if len(teacher.Courses) > 0 {
+        validCourses, err := r.CheckCoursesExist(teacher.Courses)
+        if err != nil {
+            return fmt.Errorf("failed to validate courses: %v", err)
+        }
+        if !validCourses {
+            return fmt.Errorf("some courses do not exist")
+        }
+    }
+
     query := `
         INSERT INTO teachers (name, subject, courses, working_hours)
         VALUES ($1, $2, $3, $4)
         RETURNING id
     `
-    return r.DB.QueryRow(query, teacher.Name, teacher.Subject, pq.Array(teacher.Courses), teacher.WorkingHours).Scan(&teacher.ID)
+    err := r.DB.QueryRow(query, teacher.Name, teacher.Subject, pq.Array(teacher.Courses), teacher.WorkingHours).Scan(&teacher.ID)
+    if err != nil {
+        return fmt.Errorf("failed to create teacher: %v", err)
+    }
+    return nil
 }
 
 // UpdateTeacherWorkingHours обновляет количество рабочих часов преподавателя
@@ -154,36 +169,36 @@ func (r *TeacherRepository) GetAllTeachers() ([]models.Teacher, error) {
 }
 
 // Получение преподавателя по ID
-func (r *TeacherRepository) GetTeacherByID(id int) (*models.Teacher, error) {
-    query := `SELECT id, name, subject FROM teachers WHERE id = $1`
-    row := r.DB.QueryRow(query, id)
+func (r *TeacherRepository) GetTeacherByID(teacherID int) (*models.Teacher, error) {
+    query := `
+        SELECT id, name, subject, courses, working_hours
+        FROM teachers
+        WHERE id = $1
+    `
 
     var teacher models.Teacher
-    err := row.Scan(&teacher.ID, &teacher.Name, &teacher.Subject)
-    if err == sql.ErrNoRows {
-        return nil, nil // Преподаватель не найден
-    }
+    var courses []string
+
+    err := r.DB.QueryRow(query, teacherID).Scan(
+        &teacher.ID,
+        &teacher.Name,
+        &teacher.Subject,
+        pq.Array(&courses),
+        &teacher.WorkingHours,
+    )
     if err != nil {
-        return nil, err
+        if errors.Is(err, sql.ErrNoRows) {
+            return nil, fmt.Errorf("teacher with id %d not found", teacherID)
+        }
+        return nil, fmt.Errorf("failed to fetch teacher data: %v", err)
     }
+
+    teacher.Courses = courses
     return &teacher, nil
 }
-
-// Частичное обновление преподавателя (PATCH)
-func (r *TeacherRepository) UpdateTeacherPartial(id int, updates map[string]interface{}) (*models.Teacher, error) {
-    // Проверяем, существует ли запись
-    exists, err := r.TeacherExists(id)
-    if err != nil {
-        return nil, err
-    }
-    if !exists {
-        return nil, fmt.Errorf("teacher with id %d not found", id)
-    }
-
-    // Формируем SQL-запрос
-    query := `UPDATE teachers SET `
-    args := []interface{}{}
+func (r *TeacherRepository) UpdateTeacherPartial(id int, updates map[string]interface{}) error {
     setClauses := []string{}
+    args := []interface{}{}
     paramIndex := 1
 
     for key, value := range updates {
@@ -196,27 +211,46 @@ func (r *TeacherRepository) UpdateTeacherPartial(id int, updates map[string]inte
             setClauses = append(setClauses, fmt.Sprintf("subject = $%d", paramIndex))
             args = append(args, value)
             paramIndex++
+        case "working_hours":
+            workingHours, ok := value.(float64) // JSON передает числа как float64
+            if !ok {
+                return fmt.Errorf("invalid type for working_hours: expected number")
+            }
+            if workingHours < 0 {
+                return fmt.Errorf("working_hours cannot be negative")
+            }
+            setClauses = append(setClauses, fmt.Sprintf("working_hours = $%d", paramIndex))
+            args = append(args, workingHours)
+            paramIndex++
         default:
-            return nil, fmt.Errorf("invalid field: %s", key)
+            return fmt.Errorf("invalid field: %s", key)
         }
     }
 
     if len(setClauses) == 0 {
-        return nil, fmt.Errorf("no fields to update")
+        return fmt.Errorf("no fields to update")
     }
 
-    query += strings.Join(setClauses, ", ") + fmt.Sprintf(" WHERE id = $%d RETURNING *", paramIndex)
+    query := fmt.Sprintf(`
+        UPDATE teachers
+        SET %s
+        WHERE id = $%d
+    `, strings.Join(setClauses, ", "), paramIndex)
     args = append(args, id)
 
-    // Выполняем запрос и получаем обновлённую запись
-    var teacher models.Teacher
-    err = r.DB.QueryRow(query, args...).Scan(&teacher.ID, &teacher.Name, &teacher.Subject)
+    result, err := r.DB.Exec(query, args...)
     if err != nil {
-        return nil, err
+        return fmt.Errorf("failed to update teacher data: %v", err)
     }
 
-    return &teacher, nil
+    rowsAffected, _ := result.RowsAffected()
+    if rowsAffected == 0 {
+        return fmt.Errorf("teacher with id %d not found", id)
+    }
+
+    return nil
 }
+
 func (r *TeacherRepository) TeacherExists(id int) (bool, error) {
     var exists bool
     query := `SELECT EXISTS(SELECT 1 FROM teachers WHERE id = $1)`
@@ -270,4 +304,33 @@ func (r *TeacherRepository) GetTeacherSchedule(teacherName string) ([]models.Sch
         return nil, errors.New("teacher not found")
     }
     return schedules, nil
+}
+
+func (r *TeacherRepository) UpdateTeacherProfile(teacherID int, updates map[string]interface{}) error {
+    if len(updates) == 0 {
+        return fmt.Errorf("no fields to update")
+    }
+
+    query := "UPDATE teachers SET "
+    var args []interface{}
+    var setClauses []string
+
+    for key, value := range updates {
+        setClauses = append(setClauses, fmt.Sprintf("%s = ?", key))
+        args = append(args, value)
+    }
+
+    // Добавляем все поля через запятую
+    query += strings.Join(setClauses, ", ")
+
+    // Добавляем условие WHERE
+    query += " WHERE id = ?"
+    args = append(args, teacherID)
+
+    _, err := r.DB.Exec(query, args...)
+    if err != nil {
+        return err
+    }
+
+    return nil
 }

@@ -1,9 +1,13 @@
 package services
 
 import (
-    "backend/models"
-    "backend/repository"
-    "errors"
+	"backend/models"
+	"backend/repository"
+	"errors"
+	"fmt"
+	"strings"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type TeacherService struct {
@@ -55,13 +59,15 @@ func (s *TeacherService) GetTeacherByID(id int) (*models.Teacher, error) {
     return s.Repo.GetTeacherByID(id)
 }
 
-// Частичное обновление преподавателя
-func (s *TeacherService) UpdateTeacherPartial(id int, updates map[string]interface{}) (*models.Teacher, error) {
-    updatedTeacher, err := s.Repo.UpdateTeacherPartial(id, updates)
+func (s *TeacherService) UpdateTeacherPartial(teacherID int, updates map[string]interface{}) error {
+    err := s.Repo.UpdateTeacherPartial(teacherID, updates)
     if err != nil {
-        return nil, err
+        if strings.Contains(err.Error(), "not found") {
+            return fmt.Errorf("teacher with idiot %d not found", teacherID)
+        }
+        return fmt.Errorf("failed to update teacher: %v", err)
     }
-    return updatedTeacher, nil
+    return nil
 }
 
 // Удаление преподавателя
@@ -75,4 +81,22 @@ func (s *TeacherService) GetAllTeachersWithCourses() ([]models.Teacher, error) {
 
 func (s *TeacherService) GetTeacherSchedule(teacherName string) ([]models.ScheduleResponse, error) {
     return s.Repo.GetTeacherSchedule(teacherName)
+}
+
+func (s *TeacherService) UpdateTeacherProfile(teacherID int, updates map[string]interface{}) error {
+    // Если передан новый пароль, хэшируем его
+    if newPassword, ok := updates["password"].(string); ok {
+        hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+        if err != nil {
+            return err
+        }
+        updates["password"] = string(hashedPassword)
+    }
+
+    // Обновляем данные в базе данных
+    if err := s.Repo.UpdateTeacherProfile(teacherID, updates); err != nil {
+        return err
+    }
+
+    return nil
 }

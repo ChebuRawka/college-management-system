@@ -1,11 +1,13 @@
 package services
 
 import (
-    "backend/models"
-    "backend/repository"
-    "errors"
-    "time"
-    "github.com/dgrijalva/jwt-go"
+	"backend/models"
+	"backend/repository"
+	"errors"
+	"time"
+
+	"github.com/dgrijalva/jwt-go"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthService struct {
@@ -60,4 +62,22 @@ func (s *AuthService) Login(username, password string) (string, error) {
     }
 
     return tokenString, nil
+}
+
+func (s *AuthService) UpdateTeacherProfile(userID int, updates map[string]interface{}) error {
+    // Если передан новый пароль, хэшируем его
+    if newPassword, ok := updates["password"].(string); ok {
+        hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+        if err != nil {
+            return err
+        }
+        updates["password"] = string(hashedPassword)
+    }
+
+    // Обновляем данные в базе данных
+    if err := s.Repo.UpdateTeacherProfile(userID, updates); err != nil {
+        return err
+    }
+
+    return nil
 }

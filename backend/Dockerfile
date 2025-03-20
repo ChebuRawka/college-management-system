@@ -1,18 +1,22 @@
-# Используем официальный образ Go
+# Базовый образ
 FROM golang:1.23-alpine
 
-# Устанавливаем рабочую директорию
+# Установка зависимостей
+RUN apk add --no-cache bash git
+
+
+# Установка air
+RUN go install github.com/air-verse/air@latest
+
+# Создание рабочей директории
 WORKDIR /app
 
-# Копируем зависимости
+# Копирование go.mod и go.sum
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Устанавливаем air для горячей перезагрузки
-RUN go install github.com/air-verse/air@latest
-
-# Копируем исходный код
+# Копирование исходного кода
 COPY . .
 
-# Команда для запуска приложения с горячей перезагрузкой
+# Команда для запуска air
 CMD ["air"]

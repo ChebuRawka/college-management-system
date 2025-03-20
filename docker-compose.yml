@@ -18,6 +18,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file" # Формат логов
+      options:
+        max-size: "10m"   # Максимальный размер одного файла логов
+        max-file: "3"     # Максимальное количество файлов логов
 
   app:
     build:
@@ -38,6 +43,11 @@ services:
     volumes:
       - ./backend:/app
     restart: always
+    logging:
+      driver: "json-file" # Формат логов
+      options:
+        max-size: "10m"   # Максимальный размер одного файла логов
+        max-file: "3"     # Максимальное количество файлов логов
 
 volumes:
   postgres_data:

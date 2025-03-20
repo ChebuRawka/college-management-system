@@ -4,6 +4,8 @@ import (
     "backend/models"
     "database/sql"
     "errors"
+    "strings"
+    "fmt"
 )
 
 type UserRepository struct {
@@ -42,4 +44,51 @@ func (r *UserRepository) GetUserByUsername(username string) (*models.User, error
         return nil, err
     }
     return &user, nil
+}
+
+func (r *UserRepository) UpdateTeacherProfile(userID int, updates map[string]interface{}) error {
+    if len(updates) == 0 {
+        fmt.Println("Error: no fields to update")
+        return fmt.Errorf("no fields to update")
+    }
+
+    allowedFields := map[string]bool{
+        "username": true,
+        "password": true,
+    }
+
+    query := "UPDATE users SET "
+    var args []interface{}
+    var setClauses []string
+
+    for key, value := range updates {
+        if !allowedFields[key] {
+            fmt.Printf("Error: invalid field %s\n", key)
+            return fmt.Errorf("invalid field: %s", key)
+        }
+        setClauses = append(setClauses, fmt.Sprintf("%s = ?", key))
+        args = append(args, value)
+    }
+
+    // Логируем поля для обновления
+    fmt.Println("Fields to update:", setClauses)
+
+    // Добавляем все поля через запятую
+    query += strings.Join(setClauses, ", ")
+
+    // Добавляем условие WHERE
+    query += " WHERE id = ?"
+    args = append(args, userID)
+
+    // Логируем сформированный SQL-запрос и аргументы
+    fmt.Println("Generated query:", query)
+    fmt.Println("Query arguments:", args)
+
+    _, err := r.DB.Exec(query, args...)
+    if err != nil {
+        fmt.Println("Database error:", err) // Логируем ошибку базы данных
+        return err
+    }
+
+    return nil
 }
