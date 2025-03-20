@@ -23,6 +23,17 @@ func NewScheduleService(
 }
 
 func (s *ScheduleService) CreateSchedule(teacherID, classroomID int, schedule *models.Schedule) error {
+    // Проверка, что start_time < end_time
+    if !schedule.StartTime.Before(schedule.EndTime) {
+        return errors.New("start_time must be before end_time")
+    }
+
+    // Проверка, что продолжительность занятия равна 90 минутам (1.5 часа)
+    duration := schedule.EndTime.Sub(schedule.StartTime)
+    if duration.Minutes() != 90 {
+        return errors.New("lesson duration must be exactly 1.5 hours (90 minutes)")
+    }
+
     // Проверяем пересечение времени
     conflict, err := s.Repo.CheckScheduleConflict(teacherID, schedule.DayOfWeek, schedule.StartTime, schedule.EndTime)
     if err != nil {
@@ -33,11 +44,11 @@ func (s *ScheduleService) CreateSchedule(teacherID, classroomID int, schedule *m
     }
 
     // Получаем продолжительность занятия в часах
-    duration := schedule.EndTime.Sub(schedule.StartTime).Hours()
-    fmt.Printf("Duration of the lesson: %.2f hours\n", duration)
+    durationInHours := duration.Hours()
+    fmt.Printf("Duration of the lesson: %.2f hours\n", durationInHours)
 
     // Проверяем и списываем рабочие часы у преподавателя
-    err = s.TeacherRepo.UpdateTeacherWorkingHours(teacherID, duration)
+    err = s.TeacherRepo.UpdateTeacherWorkingHours(teacherID, durationInHours)
     if err != nil {
         fmt.Println("Error updating teacher working hours:", err)
         return err
@@ -73,6 +84,13 @@ func (s *ScheduleService) GetSchedulesByDay(dayOfWeek string) ([]models.Schedule
 }
 
 func (s *ScheduleService) GetSchedulesByGroup(groupName string) ([]models.Schedule, error) {
-    return s.Repo.GetFilteredSchedules("", groupName)
+    if groupName == "" {
+        return nil, errors.New("group name cannot be empty")
+    }
+    schedules, err := s.Repo.GetFilteredSchedules("", groupName)
+    if err != nil {
+        return nil, err
+    }
+    return schedules, nil
 }
 

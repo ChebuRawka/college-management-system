@@ -56,13 +56,14 @@ func (r *TeacherRepository) UpdateTeacherWorkingHours(teacherID int, hours float
     `
     result, err := r.DB.Exec(query, hours, teacherID)
     if err != nil {
-        return err
+        return fmt.Errorf("failed to update teacher's working hours: %v", err)
     }
 
     rowsAffected, _ := result.RowsAffected()
     if rowsAffected == 0 {
-        return errors.New("not enough working hours for the teacher")
+        return fmt.Errorf("teacher with id %d does not have enough working hours", teacherID)
     }
+
     return nil
 }
 

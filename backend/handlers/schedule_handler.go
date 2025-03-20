@@ -5,7 +5,8 @@ import (
 	"backend/services"
 	"encoding/json"
 	"errors"
-	
+	"fmt"
+
 	"net/http"
 	"strconv"
 	"time"
@@ -151,9 +152,13 @@ func (h *ScheduleHandler) GetSchedulesByDay(c *gin.Context) {
 
 // GetSchedulesByGroup возвращает расписание для конкретной группы
 func (h *ScheduleHandler) GetSchedulesByGroup(c *gin.Context) {
-    groupName := c.Param("group")
+    groupName := c.Param("group_name")
+    
+    // Логируем полученное значение group_name
+    fmt.Printf("Received group_name: %q\n", groupName)
+
     if groupName == "" {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "group_name is required"})
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Group name is required"})
         return
     }
 
@@ -162,6 +167,7 @@ func (h *ScheduleHandler) GetSchedulesByGroup(c *gin.Context) {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
+
     c.JSON(http.StatusOK, schedules)
 }
 

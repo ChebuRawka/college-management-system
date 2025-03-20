@@ -93,6 +93,8 @@ authorized.Use(middleware.AuthMiddleware("your_secret_key")) // Middleware дл�
         admin.GET("/schedules/:id", scheduleHandler.GetScheduleByID)
         admin.PATCH("/schedules/:id", scheduleHandler.UpdateSchedule)
         admin.DELETE("/schedules/:id", scheduleHandler.DeleteSchedule)
+        admin.GET("/schedules/day/:day", scheduleHandler.GetSchedulesByDay)       // Просмотр расписания по дню недели
+        admin.GET("/schedules/group/:group_name", scheduleHandler.GetSchedulesByGroup)
 
         // Новый маршрут для отправки email-уведомлений
         admin.POST("/notify", teacherHandler.NotifyTeacher)
